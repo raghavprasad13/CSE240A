@@ -127,6 +127,8 @@ main(int argc, char *argv[])
     train_predictor(pc, outcome);
   }
 
+  cleanup();
+
   // Print out the mispredict statistics
   printf("Branches:        %10d\n", num_branches);
   printf("Incorrect:       %10d\n", mispredictions);
