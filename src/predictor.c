@@ -51,7 +51,7 @@ void gshare_init() {
   int gshare_bht_size = 1 << ghistoryBits;
   gshare_bht = (uint8_t *)malloc(gshare_bht_size * sizeof(uint8_t));
   for(int i = 0; i < gshare_bht_size; i++) {
-    gshare_bht[i] = WN;
+    gshare_bht[i] = SN;
   }
   g_history = 0;
 }
@@ -166,6 +166,8 @@ void gshare_train(uint32_t pc, uint8_t outcome) {
     default:
       break;
     }
+
+    g_history = (g_history << 1) | outcome;
 }
 
 void tournament_train(uint32_t pc, uint8_t outcome) {
