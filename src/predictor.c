@@ -48,6 +48,15 @@ uint8_t *global_pred_table;
 uint8_t *choice_pred_table;
 uint32_t pred_hist;
 
+// Perceptron
+int **perceptrons;
+int weights;
+int thresh;
+int perceptron_hist_len;
+uint64_t perceptron_glob_hist;
+#define THRESH_CONST_1 1.93
+#define THRESH_CONST_2 14
+
 //------------------------------------//
 //        Predictor Functions         //
 //------------------------------------//
@@ -64,7 +73,6 @@ void gshare_init() {
 }
 
 void tournament_init() {
-  printf("In tournament int\n");
   int num_global_entries = 1 << ghistoryBits;
   int num_local_pred_entries = 1 << lhistoryBits;
   int num_local_hist_entries = 1 << pcIndexBits;
@@ -91,7 +99,16 @@ void tournament_init() {
 }
 
 void perceptron_init() {
+  perceptrons = (int **)malloc(weights * sizeof(int *));
+  for(int i = 0; i < weights; i++) {
+    perceptrons[i] = (int *)malloc((perceptron_hist_len + 1) * sizeof(int));
+    for(int j = 0; j < perceptron_hist_len + 1; j++) {
+      perceptrons[i][j] = TAKEN;
+    }
+  }
 
+  thresh = (THRESH_CONST_1 * perceptron_hist_len) + THRESH_CONST_2;
+  perceptron_glob_hist = 0;
 }
 
 void init_predictor() {
@@ -168,6 +185,19 @@ uint8_t tournament_prediction(uint32_t pc) {
 }
 
 uint8_t perceptron_prediction(uint32_t pc) {
+  int idx = (pc >> 2) % weights;
+  int ans = perceptrons[idx][0];
+  int sign = 1;
+  for(int i = 0; i < perceptron_hist_len + 1; i++) {
+    if((perceptron_glob_hist & (1 << i)) != 0)
+      sign = 1;
+    else
+      sign = -1;
+    ans += (sign * perceptrons[idx][i]);
+  }
+
+  if(ans > 0)
+    return TAKEN;
   return NOTTAKEN;
 }
 
@@ -280,6 +310,33 @@ void tournament_train(uint32_t pc, uint8_t outcome) {
 }
 
 void perceptron_train(uint32_t pc, uint8_t outcome) {
+  int idx = (pc >> 2) % weights;
+  int ans = perceptrons[idx][0];
+  int sign = 1;
+  for(int i = 0; i < perceptron_hist_len + 1; i++) {
+    if((perceptron_glob_hist & (1 << i)) != 0)
+      sign = 1;
+    else
+      sign = -1;
+    ans += (sign * perceptrons[idx][i]);
+  }
+
+  int train_sign = 1;
+  if(outcome == NOTTAKEN)
+    train_sign = -1;
+
+  if((ans > 0 && outcome == NOTTAKEN) || (abs(ans) < thresh)) {
+    perceptrons[idx][0] += train_sign;
+    for(int i = 1; i <= perceptron_hist_len; i++) {
+      if((perceptron_glob_hist & (1 << i)) != 0)
+        perceptrons[idx][i] += train_sign;
+      else
+        perceptrons[idx][i] -= train_sign;
+    }
+  }
+
+  perceptron_glob_hist = (perceptron_glob_hist << 1) | outcome;
+  perceptron_glob_hist &= (1 << perceptron_hist_len) - 1;
 }
 
 // Train the predictor the last executed branch at PC 'pc' and with
@@ -313,7 +370,10 @@ void cleanup() {
       free(choice_pred_table);
       break;
     case CUSTOM:
-      // TODO
+      for(int i = 0; i < weights; i++) {
+        free(perceptrons[i]);
+      }
+      free(perceptrons);
       break;
     default:
       break;
